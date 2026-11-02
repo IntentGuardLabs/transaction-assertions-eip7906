@@ -8,7 +8,8 @@ import {ITxTraceReader} from "../shared/ITxTraceReader.sol";
 import {TxTrace} from "../shared/TxTrace.sol";
 
 /// @title NativeETHAssertion
-/// @notice ETH limits from the balance-change table. Gas is excluded by adding the gas pre-charge back for the payer.
+/// @notice ETH limits for an account: at most X spent, at least X received, balance unchanged. Reads the account's
+///         balance before and after the transaction; the gas it paid is added back, so gas never counts as spending.
 contract NativeETHAssertion is Assertion, TxTrace, INativeETHAssertion {
     constructor(ITxTraceReader reader) TxTrace(reader) {}
 

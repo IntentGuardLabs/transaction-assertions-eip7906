@@ -13,7 +13,8 @@ interface IERC721View {
 }
 
 /// @title ERC721Assertion
-/// @notice ERC-721 checks read from the collection's final state. Trusts the collection to report it.
+/// @notice NFT checks: who owns a token and who may move it, read by calling the collection after the transaction.
+///         Does not use the trace, so it trusts the collection's answers.
 contract ERC721Assertion is Assertion, IERC721Assertion {
     function assertOwner(address collection, uint256 tokenId, address expectedOwner) external view {
         address owner = IERC721View(collection).ownerOf(tokenId);

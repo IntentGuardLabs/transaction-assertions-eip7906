@@ -18,9 +18,9 @@ They cover two goals:
 
 ## Use cases on Bogota
 
-Each use case runs on a local go-ethereum `bogota-devnet-2` node as real, signed EIP-8141 frame transactions: one
-that stays within the user's limits and one that breaks them. The script reads each frame's status from the receipt
-and the chain state afterwards.
+Each use case sends real, signed EIP-8141 frame transactions to a local go-ethereum `bogota-devnet-2` node: one
+the user's assertions allow, and one they must revert. The script then checks each frame's status in the receipt
+and the balances and storage on chain.
 
 ```shell
 script/node.sh                                           # terminal 1: the Bogota node (builds geth on first run)
@@ -29,8 +29,8 @@ script/node.sh                                           # terminal 1: the Bogot
 KEY=<removed>
 forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
 forge script script/DeployDeFiMocks.s.sol  --rpc-url local --broadcast --skip-simulation --private-key $KEY
-forge script script/UseCases.s.sol         --rpc-url local --ffi                          # all use cases
-forge script script/UseCases.s.sol         --rpc-url local --ffi --sig "proxyUpgrade()"  # one
+forge script script/UseCases.s.sol         --rpc-url local --ffi                              # all use cases
+forge script script/UseCases.s.sol         --rpc-url local --ffi --sig "preventBybitHack()"  # one use case
 forge script script/GasBenchmarks.s.sol    --rpc-url local --ffi
 ```
 
@@ -38,18 +38,25 @@ forge script script/GasBenchmarks.s.sol    --rpc-url local --ffi
 - `DeployDeFiMocks` runs on local dev chains only. It deploys stand-ins for the protocols the use cases interact
   with (tokens, a Safe, DEX venues), which a fresh chain does not have. On a shared devnet the use cases would use
   the real ones.
+- `--ffi` allows a Foundry script to run a shell command. The scripts use it for one thing: `cast rpc` to fetch the
+  transaction receipt, because forge 1.5 cannot parse a JSON receipt itself. The receipt holds each frame's status.
 
 | Use case | Transaction | Assertion (ASSERT frame) | Result on the node |
 |---|---|---|---|
-| `spendLimit()` | send 0.4 ETH, then 0.6 ETH | `NativeETHAssertion.maxSpent(wallet, 0.5 ETH)` | 0.4 passes; 0.6 reverts, recipient gets nothing, gas is still charged |
+| `preventOverspending()` | send 0.4 ETH, then 0.6 ETH | `NativeETHAssertion.maxSpent(wallet, 0.5 ETH)` | 0.4 passes; 0.6 reverts, recipient gets nothing, gas is still charged |
 | | transfer 150 USDC | `ERC20Assertion.maxSpentAtSlot(usdc, slot, 100)` | reverts, balances unchanged |
-| `forbiddenToken()` | pay 100 USDC, then the same + a silent approval of a forbidden token | `StateAssertion.untouched([token])` | the payment passes; with the approval, the whole transaction reverts |
-| `proxyUpgrade()` | Safe transfer + delegatecall swapping the implementation (Bybit) | `StateAssertion.slotUnchanged(safe, 0)` | reverts, implementation unchanged, transfer undone |
+| `preventForbiddenTokenApproval()` | pay 100 USDC, then the same + a hidden approval of a forbidden token to a drainer | `StateAssertion.untouched([token])` | the payment passes; with the approval, the whole transaction reverts |
+| `preventBybitHack()` | Safe transfer + delegatecall replacing the Safe's implementation, as in the Bybit hack | `StateAssertion.slotUnchanged(safe, 0)` | reverts, implementation unchanged, transfer undone |
 | | Safe transfer + delegatecall adding an owner | `StateAssertion.onlySlotsChanged(safe, [nonce])` | slot 0 untouched, the allowlist reverts it |
-| `globalSwap()` | sell 2 × 50,000 USDC on two venues | `NativeETHAssertion.minReceived(wallet, 39 ETH)` + `maxSpentAtSlot(usdc, 100,000)` | 18 + 23 = 41 passes; 18 + 20 = 38 reverts both swaps |
+| `preventLowSwapOutput()` | sell 2 × 50,000 USDC on two venues | `NativeETHAssertion.minReceived(wallet, 39 ETH)` + `maxSpentAtSlot(usdc, 100,000)` | 18 + 23 = 41 passes; 18 + 20 = 38 reverts both swaps |
 
 forge cannot send frame transactions yet, so `script/utils/FrameTx.sol` encodes and signs them; see
 [`docs/WORKAROUNDS.md`](docs/WORKAROUNDS.md) for this and the other gaps in today's tooling.
+
+**The Bybit hack.** In February 2025 Bybit's signers approved a Safe transaction that looked like a transfer but
+delegatecalled an attacker contract. Running in the Safe's storage, it overwrote slot 0, the Safe's implementation
+address, and the attacker then drained the wallet. An assertion that slot 0 is unchanged reverts that transaction,
+whatever the calldata or the signing UI showed.
 
 **Why a global minimum.** Per-swap slippage limits judge each venue alone. An assertion checks the wallet's net
 change after every swap, however the route was built. Reading it from the balance table and the token's balance
@@ -86,19 +93,21 @@ Complete signed frame transactions are built in [`script/UseCases.s.sol`](script
 ```
 contracts/
 ├── shared/
-│   ├── TxTrace.sol            typed trace reads; base contract of every trace-based assertion
-│   ├── TxTraceReader.yul      the only code using the opcodes, at a fixed CREATE2 address
-│   └── ITxTraceReader.sol
+│   ├── TxTrace.sol            base contract: reads what the transaction changed and emitted (TXTRACE, EVENTDATACOPY)
+│   ├── TxTraceReader.yul      calls the two opcodes for TxTrace, since solc cannot emit them yet
+│   └── ITxTraceReader.sol     interface of the Yul reader
 └── assertions/
-    ├── interfaces/            IAssertion and one interface per assertion
-    ├── Assertion.sol          ERC-165 + version
-    ├── NativeETHAssertion.sol
-    ├── ERC20Assertion.sol
-    ├── StateAssertion.sol     protected slots, slot allowlist, code, untouched contracts
-    └── ERC721Assertion.sol    reads the collection, not the trace
+    ├── interfaces/            one interface per assertion: functions, errors, docs
+    ├── Assertion.sol          base: ERC-165 interface detection and version
+    ├── NativeETHAssertion.sol ETH spent / received / unchanged, gas excluded
+    ├── ERC20Assertion.sol     token spent / received / unchanged, no unexpected approvals
+    ├── StateAssertion.sol     a slot unchanged, only listed slots changed, code unchanged, contract untouched
+    └── ERC721Assertion.sol    NFT owner and approvals, asked from the collection (no trace)
 ```
 
-**`TxTrace`** reads what the client exposes to an ASSERT frame:
+**`TxTrace`** is the contract every assertion inherits. During an ASSERT frame, the client exposes the transaction's
+net changes (ETH balances, storage slots, code) and its events through the `TXTRACE` (0xb6) and `EVENTDATACOPY`
+(0xb7) opcodes. `TxTrace` turns those raw reads into functions:
 
 | Function | Returns |
 |---|---|
@@ -109,9 +118,9 @@ contracts/
 | `codeChanged(account)` | whether its code hash changed, including EIP-7702 delegations |
 | `events(emitter)`, `events(emitter, topic0)` | every event of a contract, optionally of one type (scans all events) |
 
-It is an abstract contract holding the reader address as an immutable, so no caller can supply a fake trace.
-solc cannot emit `TXTRACE` (0xb6) or `EVENTDATACOPY` (0xb7), so a ~100-byte Yul contract forwards to them. Once
-solc supports them, `TxTrace` can call them directly and the reader goes away
+solc cannot emit these opcodes yet, so `TxTrace` calls a ~100-byte Yul contract that runs them and returns the
+result. Its address is fixed when an assertion is deployed, so no caller can point it at a fake trace. Once solc
+supports the opcodes, `TxTrace` calls them directly and the Yul reader goes away
 ([`docs/WORKAROUNDS.md`](docs/WORKAROUNDS.md)).
 
 **Assertions and what they trust:**
@@ -152,12 +161,9 @@ Unit tests check the logic. Client behaviour is checked on the node, with the sc
 
 ## Limits and open questions
 
-- **Event scans are linear in all events.** Events are not sorted, so `events(token)` reads every event: an
-  event-based ERC-20 check costs ~10,700 gas alone and ~811,000 with 1,000 padding events. A client-side
-  per-emitter index or precompile would fix it (feedback F3, F12).
-- **No generic ERC-20 balance.** Exact token checks need the balance slot; events can lie (F5).
-- **Net diff only.** Slots written and restored, and storage wipes, are invisible.
-- **Tested on go-ethereum only**, on a local node. Other clients and the public devnet are not covered.
+- The state at the beginning of the transaction can only be derived from the end state: read the current balance
+  and work back to the initial balance by replaying the transfers.
+- Should a precompile handle extracting the changed slots and the events?
 
 Findings for the EIP authors: [`docs/EIP-7906-implementation-feedback.md`](docs/EIP-7906-implementation-feedback.md).
 

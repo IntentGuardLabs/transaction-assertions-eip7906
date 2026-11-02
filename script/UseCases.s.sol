@@ -21,15 +21,15 @@ interface ISafe {
     function isOwner(address) external view returns (bool);
 }
 
-/// @notice Runs the use cases on a Bogota node as real EIP-8141 frame transactions signed by the wallet: a body, then
-///         ASSERT frames calling the deployed assertions. For each, one transaction respects the user's limits and
-///         one breaks them; the script reads the receipt and the chain state and prints what happened.
+/// @notice Sends real EIP-8141 frame transactions to a Bogota node, each followed by ASSERT frames that call the
+///         deployed assertions. Each use case sends one transaction the assertions allow and one they must revert,
+///         then checks the frame statuses in the receipt and the chain state.
 ///
-///         forge script script/UseCases.s.sol --rpc-url local --ffi                          all use cases
-///         forge script script/UseCases.s.sol --rpc-url local --ffi --sig "proxyUpgrade()"  one use case
+///         forge script script/UseCases.s.sol --rpc-url local --ffi                              all use cases
+///         forge script script/UseCases.s.sol --rpc-url local --ffi --sig "preventBybitHack()"  one use case
 ///
-///         Needs script/node.sh, script/DeployAssertions.s.sol and script/DeployDeFiMocks.s.sol first. Transactions are sent with
-///         `eth_sendRawTransaction`, not `--broadcast`: forge cannot broadcast frame transactions.
+///         `--ffi` lets the script run `cast` to read receipts (see docs/WORKAROUNDS.md). Run script/node.sh,
+///         DeployAssertions and DeployDeFiMocks first.
 contract UseCases is FrameTxScript {
     address internal constant RECIPIENT = address(0xBEEF);
     address internal constant DRAINER = address(0xD7A1);
@@ -46,19 +46,19 @@ contract UseCases is FrameTxScript {
     address internal venueC;
 
     function run() external {
-        spendLimit();
-        forbiddenToken();
-        proxyUpgrade();
-        globalSwap();
+        preventOverspending();
+        preventForbiddenTokenApproval();
+        preventBybitHack();
+        preventLowSwapOutput();
     }
 
     // -----------------------------------------------------------------------------------------------------------------
     // Use cases
     // -----------------------------------------------------------------------------------------------------------------
 
-    /// @notice The wallet allows at most 0.5 ETH out (gas excluded) and at most 100 USDC out.
-    function spendLimit() public {
-        _load("spend-limit: at most 0.5 ETH and 100 USDC out");
+    /// @notice The user caps what leaves the wallet: 0.5 ETH (gas excluded) and 100 USDC.
+    function preventOverspending() public {
+        _load("Prevent overspending: at most 0.5 ETH and 100 USDC leave the wallet");
         bytes memory maxEth = abi.encodeCall(INativeETHAssertion.maxSpent, (wallet, 0.5 ether));
 
         uint256 before = _ethBalance(RECIPIENT);
@@ -85,10 +85,10 @@ contract UseCases is FrameTxScript {
         _expect(_tokenBalance(usdc, RECIPIENT) == before, "transfer reverted: recipient received no USDC");
     }
 
-    /// @notice The wallet forbids any change to `stakedToken`. A payment in another token passes; the same payment
-    ///         bundled with a silent approval of the staked token (no Approval event) is reverted.
-    function forbiddenToken() public {
-        _load("forbidden-token: stakedToken cannot be touched");
+    /// @notice The user forbids any change to `stakedToken`. A USDC payment passes; the same payment bundled with a
+    ///         hidden approval of the staked token to a drainer (no Approval event) is reverted.
+    function preventForbiddenTokenApproval() public {
+        _load("Prevent forbidden token approval: stakedToken cannot be touched");
         address[] memory forbidden = new address[](1);
         forbidden[0] = stakedToken;
         FrameTx.Frame memory payment = FrameTx.call(usdc, 0, abi.encodeCall(IToken.transfer, (RECIPIENT, 100e6)));
@@ -112,10 +112,11 @@ contract UseCases is FrameTxScript {
         _expect(_tokenBalance(usdc, RECIPIENT) == before, "payment reverted too");
     }
 
-    /// @notice Bybit: a Safe transaction that also delegatecalls a contract rewriting the Safe's implementation slot.
-    ///         The wallet requires slot 0 unchanged and no Safe storage change other than the nonce.
-    function proxyUpgrade() public {
-        _load("proxy-upgrade: the Safe's implementation and owners cannot change");
+    /// @notice The Bybit hack (February 2025): the signed Safe transaction delegatecalled a contract that replaced the
+    ///         Safe's implementation (slot 0) with the attacker's. The user requires slot 0 unchanged and no Safe
+    ///         storage change other than the nonce.
+    function preventBybitHack() public {
+        _load("Prevent Bybit hack: the Safe's implementation and owners cannot change");
         bytes32[] memory allowed = new bytes32[](1);
         allowed[0] = SAFE_NONCE_SLOT;
         FrameTx.Frame memory transfer = _safeExec(usdc, abi.encodeCall(IToken.transfer, (RECIPIENT, 10e6)), 0);
@@ -147,10 +148,10 @@ contract UseCases is FrameTxScript {
         );
     }
 
-    /// @notice Sell 100,000 USDC in two halves on two venues. The wallet wants at least 39 ETH in total, whatever each
+    /// @notice Sell 100,000 USDC in two halves on two venues. The user wants at least 39 ETH in total, whatever each
     ///         venue pays: 18 + 23 passes, 18 + 20 reverts both swaps.
-    function globalSwap() public {
-        _load("global-swap: at least 39 ETH for at most 100,000 USDC, across venues");
+    function preventLowSwapOutput() public {
+        _load("Prevent low swap output: at least 39 ETH in total for 100,000 USDC, across two venues");
         _swapBoth("venue A (18 ETH) + venue B (23 ETH)", venueB);
         _expectFrames(_statuses(1, 1, 1, 1, 1, 1, 1));
 

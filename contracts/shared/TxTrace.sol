@@ -4,7 +4,9 @@ pragma solidity ^0.8.24;
 import {ITxTraceReader} from "./ITxTraceReader.sol";
 
 /// @title TxTrace
-/// @notice Typed reads of the EIP-7906 transaction trace, for contracts called from an ASSERT frame.
+/// @notice Base contract of the assertions. Reads what the current transaction changed (ETH balances, storage
+///         slots, code) and the events it emitted, using the EIP-7906 opcodes TXTRACE (0xb6) and EVENTDATACOPY
+///         (0xb7). The client only answers these opcodes inside an ASSERT frame.
 /// @dev The reader is fixed at deployment, so a caller cannot supply its own trace. State tables are sorted by
 ///      address (storage then by slot), so lookups are binary searches. Events are in emission order, so per-emitter
 ///      queries scan every event. Any failed read reverts, failing the assertion.

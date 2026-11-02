@@ -8,7 +8,8 @@ import {ITxTraceReader} from "../shared/ITxTraceReader.sol";
 import {TxTrace} from "../shared/TxTrace.sol";
 
 /// @title StateAssertion
-/// @notice Protected slots, slot allowlists, code integrity and untouchable contracts. See `IStateAssertion`.
+/// @notice Guards a contract's storage and code: a slot must not change, only listed slots may change, the code must
+///         not change, or a contract must not be touched at all. Stops the Bybit-style proxy takeover.
 contract StateAssertion is Assertion, TxTrace, IStateAssertion {
     constructor(ITxTraceReader reader) TxTrace(reader) {}
 

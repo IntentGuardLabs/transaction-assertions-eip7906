@@ -8,7 +8,8 @@ import {ITxTraceReader} from "../shared/ITxTraceReader.sol";
 import {TxTrace} from "../shared/TxTrace.sol";
 
 /// @title ERC20Assertion
-/// @notice ERC-20 checks from the token's balance slot or from its events. See `IERC20Assertion`.
+/// @notice Token limits for an account: at most X spent, at least X received, balance unchanged, no approval to an
+///         unknown spender. Reads the holder's balance slot (exact) or the token's Transfer/Approval events.
 /// @dev A `Transfer` or `Approval` from the token that is not exactly ERC-20 shaped reverts: it cannot be decoded,
 ///      so it cannot be ruled out.
 contract ERC20Assertion is Assertion, TxTrace, IERC20Assertion {
