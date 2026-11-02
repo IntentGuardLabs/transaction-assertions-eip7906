@@ -1,0 +1,37 @@
+# EIP-7906 assertion contracts: ASSERT frames, TXTRACE (0xb6, params 0x00-0x1A), EVENTDATACOPY (0xb7).
+[profile.default]
+src = "contracts"
+out = "out"
+test = "test"
+script = "script"
+libs = ["lib"]
+remappings = ["forge-std/=lib/forge-std/src/"]
+solc_version = "0.8.35"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 10_000
+# Scripts read the compiled TxTraceReader.yul artifact and write deployed addresses to deployments/.
+fs_permissions = [{ access = "read", path = "./out" }, { access = "read-write", path = "./deployments" }]
+
+[rpc_endpoints]
+local = "http://127.0.0.1:8545"
+
+[fuzz]
+runs = 1024
+
+[profile.ci.fuzz]
+runs = 10_000
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
+quote_style = "double"
+number_underscore = "thousands"
+# Standalone Yul is not supported by the formatter.
+ignore = ["contracts/**/*.yul"]
+
+[lint]
+# The Solidity linter (solar) does not parse standalone Yul objects; lint the .sol files explicitly.
+lint_on_build = false

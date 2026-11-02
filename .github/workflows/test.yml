@@ -1,0 +1,55 @@
+name: CI
+
+permissions: {}
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  forge:
+    name: Foundry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge --version
+      - run: forge fmt --check
+      - run: forge build --sizes
+      - run: forge test -vvv
+
+  bogota:
+    # The use cases as real frame transactions on go-ethereum bogota-devnet-2 (local node, built from source).
+    name: Use cases on Bogota
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Public local test key, funded by script/node.sh.
+      KEY: "<removed>"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - name: Start the node
+        run: |
+          script/node.sh > node.log 2>&1 &
+          timeout 900 bash -c 'until grep -q "Bogota node running" node.log; do sleep 2; done' || (cat node.log; exit 1)
+      - run: forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
+      - run: forge script script/DeployDeFiMocks.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
+      - run: forge script script/UseCases.s.sol --rpc-url local --ffi
+      - run: forge script script/GasBenchmarks.s.sol --rpc-url local --ffi
