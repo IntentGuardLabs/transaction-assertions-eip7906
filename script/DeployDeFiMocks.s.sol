@@ -24,6 +24,7 @@ contract DeployDeFiMocks is Script {
         vm.startBroadcast();
         MockERC20 usdc = new MockERC20();
         usdc.mint(wallet, 1_000_000e6);
+        MockERC20 weth = new MockERC20();
 
         // A token the wallet forbids touching; it can change allowances without emitting Approval.
         MisleadingERC20 stakedToken = new MisleadingERC20();
@@ -34,10 +35,10 @@ contract DeployDeFiMocks is Script {
         usdc.mint(address(safe), 1000e6);
         SafeTakeover takeover = new SafeTakeover();
 
-        // Venues paying 18, 23 and 20 ETH for 50,000 USDC.
-        MockVenue venueA = _venue(18 ether);
-        MockVenue venueB = _venue(23 ether);
-        MockVenue venueC = _venue(20 ether);
+        // Venues paying 18, 23 and 20 WETH for 50,000 USDC.
+        MockVenue venueA = _venue(weth, 18e18);
+        MockVenue venueB = _venue(weth, 23e18);
+        MockVenue venueC = _venue(weth, 20e18);
 
         // Gas benchmarks: a body that pads the trace, and an assertion target with one access pattern per function.
         string memory deployment = vm.readFile(string.concat("deployments/", vm.toString(block.chainid), ".json"));
@@ -48,6 +49,7 @@ contract DeployDeFiMocks is Script {
         string memory json = "mocks";
         vm.serializeAddress(json, "wallet", wallet);
         vm.serializeAddress(json, "usdc", address(usdc));
+        vm.serializeAddress(json, "weth", address(weth));
         vm.serializeAddress(json, "stakedToken", address(stakedToken));
         vm.serializeAddress(json, "safe", address(safe));
         vm.serializeAddress(json, "takeover", address(takeover));
@@ -59,10 +61,9 @@ contract DeployDeFiMocks is Script {
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), "-mocks.json"));
     }
 
-    function _venue(uint256 quote) internal returns (MockVenue venue) {
+    function _venue(MockERC20 tokenOut, uint256 quote) internal returns (MockVenue venue) {
         venue = new MockVenue();
         venue.setQuote(quote);
-        (bool ok,) = address(venue).call{value: 100 ether}("");
-        require(ok);
+        tokenOut.mint(address(venue), 1000e18);
     }
 }

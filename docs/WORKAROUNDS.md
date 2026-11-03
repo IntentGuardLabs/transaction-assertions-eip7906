@@ -73,6 +73,6 @@ the script waits for a receipt before reporting the node ready.
 ## Mocks
 
 `DeployDeFiMocks.s.sol` deploys what a fresh chain lacks: tokens (`MockERC20`, and `MisleadingERC20`, which changes
-allowances without events), a Safe stand-in, DEX venues with fixed quotes, and the gas-benchmark helpers.
+allowances without events), a Safe stand-in, DEX venues paying a fixed WETH amount per swap, and the gas-benchmark helpers.
 `MockSafe` copies Safe's storage layout for slots 0 to 5 (singleton, modules, owners, owner count, threshold,
 nonce) so the slot checks mean the same thing as on a real Safe. It is not the audited Safe code.

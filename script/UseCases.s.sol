@@ -38,6 +38,7 @@ contract UseCases is FrameTxScript {
     uint256 internal constant HALF = 50_000e6;
 
     address internal usdc;
+    address internal weth;
     address internal stakedToken;
     address internal safe;
     address internal takeover;
@@ -148,29 +149,35 @@ contract UseCases is FrameTxScript {
         );
     }
 
-    /// @notice Sell 100,000 USDC in two halves on two venues. The user wants at least 39 ETH in total, whatever each
-    ///         venue pays: 18 + 23 passes, 18 + 20 reverts both swaps.
+    /// @notice Sell 100,000 USDC for WETH in two halves on two venues. The user wants at least 39 WETH in total,
+    ///         whatever each venue pays: 18 + 23 passes, 18 + 20 reverts both swaps. Both limits are computed from the
+    ///         tokens' Transfer events: WETH received by the wallet, USDC sent by it.
     function preventMinSwapOutput() public {
-        _load("Prevent low swap output: at least 39 ETH in total for 100,000 USDC, across two venues");
-        _swapBoth("venue A (18 ETH) + venue B (23 ETH)", venueB);
+        _load("Prevent min swap output: at least 39 WETH in total for at most 100,000 USDC, across two venues");
+        uint256 wethBefore = _tokenBalance(weth, wallet);
+        _swapBoth("venue A (18 WETH) + venue B (23 WETH)", venueB);
         _expectFrames(_statuses(1, 1, 1, 1, 1, 1, 1));
+        _expect(_tokenBalance(weth, wallet) - wethBefore == 41e18, "wallet received 41 WETH");
 
         uint256 usdcBefore = _tokenBalance(usdc, wallet);
-        _swapBoth("venue A (18 ETH) + venue C (20 ETH)", venueC);
+        wethBefore = _tokenBalance(weth, wallet);
+        _swapBoth("venue A (18 WETH) + venue C (20 WETH)", venueC);
         _expectFrames(_statuses(1, 1, 1, 1, 1, 1, 0));
-        _expect(_tokenBalance(usdc, wallet) == usdcBefore, "both swaps reverted: USDC unchanged");
+        _expect(
+            _tokenBalance(usdc, wallet) == usdcBefore && _tokenBalance(weth, wallet) == wethBefore,
+            "both swaps reverted: USDC and WETH unchanged"
+        );
     }
 
     function _swapBoth(string memory title, address second) internal {
+        bytes memory swap = abi.encodeWithSignature("swap(address,uint256,address,uint256)", usdc, HALF, weth, 0);
         FrameTx.Frame[] memory f = new FrameTx.Frame[](6);
         f[0] = FrameTx.call(usdc, 0, abi.encodeCall(IToken.approve, (venueA, HALF)));
         f[1] = FrameTx.call(usdc, 0, abi.encodeCall(IToken.approve, (second, HALF)));
-        f[2] = FrameTx.call(venueA, 0, abi.encodeWithSignature("swap(address,uint256,uint256)", usdc, HALF, 0));
-        f[3] = FrameTx.call(second, 0, abi.encodeWithSignature("swap(address,uint256,uint256)", usdc, HALF, 0));
-        f[4] = FrameTx.assertion(
-            erc20, abi.encodeCall(IERC20Assertion.maxSpentAtSlot, (usdc, _balanceSlot(wallet), 2 * HALF))
-        );
-        f[5] = FrameTx.assertion(nativeETH, abi.encodeCall(INativeETHAssertion.minReceived, (wallet, 39 ether)));
+        f[2] = FrameTx.call(venueA, 0, swap);
+        f[3] = FrameTx.call(second, 0, swap);
+        f[4] = FrameTx.assertion(erc20, abi.encodeCall(IERC20Assertion.maxSpent, (usdc, wallet, 2 * HALF)));
+        f[5] = FrameTx.assertion(erc20, abi.encodeCall(IERC20Assertion.minReceived, (weth, wallet, 39e18)));
         _send(title, f);
     }
 
@@ -180,6 +187,7 @@ contract UseCases is FrameTxScript {
         if (wallet != address(0)) return;
         string memory m = _loadDeployment();
         usdc = vm.parseJsonAddress(m, ".usdc");
+        weth = vm.parseJsonAddress(m, ".weth");
         stakedToken = vm.parseJsonAddress(m, ".stakedToken");
         safe = vm.parseJsonAddress(m, ".safe");
         takeover = vm.parseJsonAddress(m, ".takeover");

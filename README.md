@@ -48,7 +48,7 @@ forge script script/GasBenchmarks.s.sol    --rpc-url local --ffi
 | `preventForbiddenTokenApproval()` | pay 100 USDC, then the same + a hidden approval of a forbidden token to a drainer | `StateAssertion.untouched([token])` | the payment passes; with the approval, the whole transaction reverts |
 | `preventBybitHack()` | Safe transfer + delegatecall replacing the Safe's implementation, as in the Bybit hack | `StateAssertion.slotUnchanged(safe, 0)` | reverts, implementation unchanged, transfer undone |
 | | Safe transfer + delegatecall adding an owner | `StateAssertion.onlySlotsChanged(safe, [nonce])` | slot 0 untouched, the allowlist reverts it |
-| `preventMinSwapOutput()` | sell 2 × 50,000 USDC on two venues | `NativeETHAssertion.minReceived(wallet, 39 ETH)` + `maxSpentAtSlot(usdc, 100,000)` | 18 + 23 = 41 passes; 18 + 20 = 38 reverts both swaps |
+| `preventMinSwapOutput()` | sell 2 × 50,000 USDC for WETH on two venues | `ERC20Assertion.minReceived(weth, wallet, 39)` + `maxSpent(usdc, wallet, 100,000)` | 18 + 23 = 41 WETH passes; 18 + 20 = 38 reverts both swaps |
 
 forge cannot send frame transactions yet, so `script/utils/FrameTx.sol` encodes and signs them; see
 [`docs/WORKAROUNDS.md`](docs/WORKAROUNDS.md) for this and the other gaps in today's tooling.
@@ -58,9 +58,10 @@ delegatecalled an attacker contract. Running in the Safe's storage, it overwrote
 address, and the attacker then drained the wallet. An assertion that slot 0 is unchanged reverts that transaction,
 whatever the calldata or the signing UI showed.
 
-**Why a global minimum.** Per-swap slippage limits judge each venue alone. An assertion checks the wallet's net
-change after every swap, however the route was built. Reading it from the balance table and the token's balance
-slot, not from events, also makes it correct for fee-on-transfer tokens.
+**Why a global minimum.** Per-swap slippage limits judge each venue alone. The assertion adds up every WETH
+`Transfer` to the wallet and every USDC `Transfer` from it, across all swaps, however the route was built. Events
+trust the token to report its transfers honestly; for an exact check, `minReceivedAtSlot` / `maxSpentAtSlot` read
+the wallet's balance slot instead.
 
 **Why an allowlist for the Safe.** Slot 0 holds the implementation. Owners, modules and the guard live at hashed
 slots the wallet cannot list, but `onlySlotsChanged` refuses anything not allowed, so it covers them without
@@ -70,17 +71,17 @@ knowing the layout. Neither check stops a delegatecall that only moves assets; a
 
 ```
 frame 0  VERIFY   signature, approve execution and gas
-frame 1  SENDER   swap on venue A
-frame 2  SENDER   swap on venue B
-frame 3  ASSERT   NativeETHAssertion   minReceived(wallet, 39 ether)
-frame 4  ASSERT   ERC20Assertion       maxSpentAtSlot(USDC, slot, 100_000e6)
+frame 1  SENDER   swap USDC for WETH on venue A
+frame 2  SENDER   swap USDC for WETH on venue B
+frame 3  ASSERT   ERC20Assertion       maxSpent(USDC, wallet, 100_000e6)
+frame 4  ASSERT   ERC20Assertion       minReceived(WETH, wallet, 39e18)
 ```
 
 An ASSERT frame is mode 3, `value = 0`, `target` = the assertion, and `data` = the call:
 
 ```solidity
-abi.encodeCall(INativeETHAssertion.minReceived, (wallet, 39 ether));
-abi.encodeCall(IERC20Assertion.maxSpentAtSlot, (USDC, keccak256(abi.encode(wallet, uint256(0))), 100_000e6));
+abi.encodeCall(IERC20Assertion.maxSpent, (USDC, wallet, 100_000e6));
+abi.encodeCall(IERC20Assertion.minReceived, (WETH, wallet, 39e18));
 abi.encodeCall(IStateAssertion.slotUnchanged, (safe, bytes32(0)));
 ```
 
