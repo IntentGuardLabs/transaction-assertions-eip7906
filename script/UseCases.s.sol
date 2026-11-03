@@ -49,7 +49,7 @@ contract UseCases is FrameTxScript {
         preventOverspending();
         preventForbiddenTokenApproval();
         preventBybitHack();
-        preventLowSwapOutput();
+        preventMinSwapOutput();
     }
 
     // -----------------------------------------------------------------------------------------------------------------
@@ -150,7 +150,7 @@ contract UseCases is FrameTxScript {
 
     /// @notice Sell 100,000 USDC in two halves on two venues. The user wants at least 39 ETH in total, whatever each
     ///         venue pays: 18 + 23 passes, 18 + 20 reverts both swaps.
-    function preventLowSwapOutput() public {
+    function preventMinSwapOutput() public {
         _load("Prevent low swap output: at least 39 ETH in total for 100,000 USDC, across two venues");
         _swapBoth("venue A (18 ETH) + venue B (23 ETH)", venueB);
         _expectFrames(_statuses(1, 1, 1, 1, 1, 1, 1));

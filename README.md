@@ -48,7 +48,7 @@ forge script script/GasBenchmarks.s.sol    --rpc-url local --ffi
 | `preventForbiddenTokenApproval()` | pay 100 USDC, then the same + a hidden approval of a forbidden token to a drainer | `StateAssertion.untouched([token])` | the payment passes; with the approval, the whole transaction reverts |
 | `preventBybitHack()` | Safe transfer + delegatecall replacing the Safe's implementation, as in the Bybit hack | `StateAssertion.slotUnchanged(safe, 0)` | reverts, implementation unchanged, transfer undone |
 | | Safe transfer + delegatecall adding an owner | `StateAssertion.onlySlotsChanged(safe, [nonce])` | slot 0 untouched, the allowlist reverts it |
-| `preventLowSwapOutput()` | sell 2 × 50,000 USDC on two venues | `NativeETHAssertion.minReceived(wallet, 39 ETH)` + `maxSpentAtSlot(usdc, 100,000)` | 18 + 23 = 41 passes; 18 + 20 = 38 reverts both swaps |
+| `preventMinSwapOutput()` | sell 2 × 50,000 USDC on two venues | `NativeETHAssertion.minReceived(wallet, 39 ETH)` + `maxSpentAtSlot(usdc, 100,000)` | 18 + 23 = 41 passes; 18 + 20 = 38 reverts both swaps |
 
 forge cannot send frame transactions yet, so `script/utils/FrameTx.sol` encodes and signs them; see
 [`docs/WORKAROUNDS.md`](docs/WORKAROUNDS.md) for this and the other gaps in today's tooling.
