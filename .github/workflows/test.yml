@@ -33,9 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      # Public local test key, funded by script/node.sh.
-      KEY: "<removed>"
     steps:
       - uses: actions/checkout@v5
         with:
@@ -49,7 +46,7 @@ jobs:
         run: |
           script/node.sh > node.log 2>&1 &
           timeout 900 bash -c 'until grep -q "Bogota node running" node.log; do sleep 2; done' || (cat node.log; exit 1)
-      - run: forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
-      - run: forge script script/DeployDeFiMocks.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
+      - run: forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation
+      - run: forge script script/DeployDeFiMocks.s.sol --rpc-url local --broadcast --skip-simulation
       - run: forge script script/UseCases.s.sol --rpc-url local --ffi
       - run: forge script script/GasBenchmarks.s.sol --rpc-url local --ffi

@@ -11,7 +11,8 @@ import {StateAssertion} from "../contracts/assertions/StateAssertion.sol";
 /// @notice The product deployment: `TxTraceReader` (CREATE2 factory, salt 0, so the same address on every chain) and
 ///         the assertion contracts that read it. Run it on any chain with EIP-7906; wallets only need these
 ///         addresses. Writes them to deployments/<chainId>.json. Refuses mainnet.
-///         forge script script/DeployAssertions.s.sol --rpc-url <rpc> --broadcast --private-key <funded key>
+///         forge script script/DeployAssertions.s.sol --rpc-url <rpc> --broadcast --skip-simulation
+///         Signs with DEPLOYER_KEY from .env if set (script/node.sh writes it), else with --private-key / --account.
 contract DeployAssertions is Script {
     error MainnetDeploymentDisabled();
     error ReaderDeploymentFailed();
@@ -36,7 +37,9 @@ contract DeployAssertions is Script {
         bytes memory runtime = vm.parseJsonBytes(_readerArtifact(), ".deployedBytecode.object");
         address reader = readerAddress();
 
-        vm.startBroadcast();
+        uint256 key = vm.envOr("DEPLOYER_KEY", uint256(0));
+        if (key == 0) vm.startBroadcast();
+        else vm.startBroadcast(key);
         if (reader.code.length == 0) {
             (bool ok,) = CREATE2_FACTORY.call(abi.encodePacked(bytes32(0), initCode));
             if (!ok) revert ReaderDeploymentFailed();

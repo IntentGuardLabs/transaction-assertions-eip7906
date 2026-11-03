@@ -23,12 +23,11 @@ the user's assertions allow, and one they must revert. The script then checks ea
 and the balances and storage on chain.
 
 ```shell
-script/node.sh                                           # terminal 1: the Bogota node (builds geth on first run)
+script/node.sh                                           # terminal 1: the Bogota node (builds geth on first run);
+                                                         # funds fresh keys and writes them to .env
 
-# Public test key: node.sh funds it on the local chain only. On a real network, use your own funded key.
-KEY=<removed>
-forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation --private-key $KEY
-forge script script/DeployDeFiMocks.s.sol  --rpc-url local --broadcast --skip-simulation --private-key $KEY
+forge script script/DeployAssertions.s.sol --rpc-url local --broadcast --skip-simulation
+forge script script/DeployDeFiMocks.s.sol  --rpc-url local --broadcast --skip-simulation
 forge script script/UseCases.s.sol         --rpc-url local --ffi                              # all use cases
 forge script script/UseCases.s.sol         --rpc-url local --ffi --sig "preventBybitHack()"  # one use case
 forge script script/GasBenchmarks.s.sol    --rpc-url local --ffi

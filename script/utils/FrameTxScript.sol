@@ -7,9 +7,6 @@ import {FrameTx} from "./FrameTx.sol";
 /// @notice Base for scripts that send frame transactions to a Bogota node and read the results. Reads go to the
 ///         node at `latest` over JSON-RPC, so they see the transactions the script sent. Run with `--ffi`.
 abstract contract FrameTxScript is Script {
-    /// @dev The wallet key funded by script/node.sh (a public local test key).
-    uint256 internal constant DEFAULT_WALLET_KEY = <removed>;
-
     uint256 internal walletKey;
     address internal wallet;
     address internal nativeETH;
@@ -24,7 +21,7 @@ abstract contract FrameTxScript is Script {
         string memory chain = vm.toString(block.chainid);
         string memory d = vm.readFile(string.concat("deployments/", chain, ".json"));
         mocks = vm.readFile(string.concat("deployments/", chain, "-mocks.json"));
-        walletKey = vm.envOr("WALLET_KEY", DEFAULT_WALLET_KEY);
+        walletKey = vm.envUint("WALLET_KEY"); // from .env, written by script/node.sh
         wallet = vm.addr(walletKey);
         require(wallet == vm.parseJsonAddress(mocks, ".wallet"), "WALLET_KEY does not match the mocks' wallet");
         nativeETH = vm.parseJsonAddress(d, ".nativeETH");

@@ -12,16 +12,14 @@ import {ITxTraceReader} from "../contracts/shared/ITxTraceReader.sol";
 ///         real networks but not on a fresh local chain: tokens held by the wallet, a Safe it owns, three DEX venues
 ///         with fixed quotes, and the gas-benchmark helpers. On a shared network, point the use cases at the real
 ///         protocols instead. Writes the addresses to deployments/<chainId>-mocks.json.
-///         forge script script/DeployDeFiMocks.s.sol --rpc-url local --broadcast --private-key <deployer>
+///         forge script script/DeployDeFiMocks.s.sol --rpc-url local --broadcast --skip-simulation
+///         Uses DEPLOYER_KEY and WALLET_KEY from .env, written by script/node.sh.
 contract DeployDeFiMocks is Script {
-    /// @dev The wallet funded by script/node.sh.
-    address internal constant DEFAULT_WALLET = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-
     function run() external {
         require(block.chainid == 1337 || block.chainid == 31_337, "mocks are for local dev chains only");
-        address wallet = vm.envOr("WALLET", DEFAULT_WALLET);
+        address wallet = vm.addr(vm.envUint("WALLET_KEY"));
 
-        vm.startBroadcast();
+        vm.startBroadcast(vm.envUint("DEPLOYER_KEY"));
         MockERC20 usdc = new MockERC20();
         usdc.mint(wallet, 1_000_000e6);
         MockERC20 weth = new MockERC20();

@@ -66,9 +66,10 @@ earlier ASSERT frame failed).
 ## The local node (`script/node.sh`)
 
 Builds go-ethereum at the pinned bogota-devnet-2 commit once, then starts a fresh `--dev` chain with Bogota active
-from genesis. It also deploys the standard CREATE2 factory (so the reader gets its usual address) and funds two
-public test keys. Right after startup geth answers receipt queries with "transaction indexing is in progress", so
-the script waits for a receipt before reporting the node ready.
+from genesis. It also deploys the standard CREATE2 factory (so the reader gets its usual address) and funds two keys
+generated on each start, a deployer and the wallet, written to `.env` (gitignored) where forge reads them. Right
+after startup geth answers receipt queries with "transaction indexing is in progress", so the script waits for a
+receipt before reporting the node ready.
 
 ## Mocks
 
